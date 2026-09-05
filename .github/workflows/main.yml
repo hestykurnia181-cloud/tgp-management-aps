@@ -59,36 +59,21 @@ jobs:
           npx cap init "TGP Management" "com.tgp.management" --web-dir dist
           npx cap add android || echo "Android folder already exists"
           npx cap sync android
-          
-          echo "🔧 Memperbaiki konflik duplicate class kotlin-stdlib pada Gradle..."
-          cat << 'EOF' >> android/build.gradle
 
-allprojects {
-    configurations.all {
-        exclude group: 'org.jetbrains.kotlin', module: 'kotlin-stdlib-jdk7'
-        exclude group: 'org.jetbrains.kotlin', module: 'kotlin-stdlib-jdk8'
-    }
-}
-EOF
-
-          cat << 'EOF' >> android/app/build.gradle
-
-configurations.all {
-    exclude group: 'org.jetbrains.kotlin', module: 'kotlin-stdlib-jdk7'
-    exclude group: 'org.jetbrains.kotlin', module: 'kotlin-stdlib-jdk8'
-}
-EOF
+          echo "🔧 Memperbaiki duplikat modul kotlin-stdlib pada Gradle..."
+          echo "allprojects { configurations.all { exclude group: 'org.jetbrains.kotlin', module: 'kotlin-stdlib-jdk7'; exclude group: 'org.jetbrains.kotlin', module: 'kotlin-stdlib-jdk8' } }" >> android/build.gradle
+          echo "configurations.all { exclude group: 'org.jetbrains.kotlin', module: 'kotlin-stdlib-jdk7'; exclude group: 'org.jetbrains.kotlin', module: 'kotlin-stdlib-jdk8' }" >> android/app/build.gradle
+          echo "android.enableJetifier=true" >> android/gradle.properties
 
           echo "🔨 Mengompilasi file .apk dengan Gradle..."
           cd android
           chmod +x gradlew
           ./gradlew assembleDebug --no-daemon
-          
-          # Pindahkan dan simpan file APK dengan nama yang rapi
+
           cd ..
           mkdir -p apk_output
           cp android/app/build/outputs/apk/debug/app-debug.apk apk_output/TGP-Management.apk
-          echo "✅ Berhasil membuat file APK!"
+          echo "✅ File APK berhasil dibuat!"
           ls -lh apk_output/
 
       # 8. Upload File APK Android (.apk) ke tab Artifacts
