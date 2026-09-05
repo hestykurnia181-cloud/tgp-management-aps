@@ -33,30 +33,24 @@ jobs:
             exit 0
           fi
 
+          mkdir -p temp_extracted
           for zip_file in "${zips[@]}"; do
             echo "📦 Mengekstrak file: $zip_file"
             unzip -o "$zip_file" -d temp_extracted/
           done
 
-          # Cek jika isi file terbungkus di dalam subfolder
-          items=(temp_extracted/*)
-          if [ ${#items[@]} -eq 1 ] && [ -d "${items[0]}" ]; then
-            echo "Isi file berada di dalam subfolder, memindahkan ke root..."
-            shopt -s dotglob
-            mv "${items[0]}"/* .
-            shopt -u dotglob
-          else
-            echo "Memindahkan isi temp_extracted ke root..."
-            shopt -s dotglob
-            mv temp_extracted/* .
-            shopt -u dotglob
-          fi
+          # Amankan folder .github agar workflow yang berjalan tidak tertimpa
+          rm -rf temp_extracted/.github
+
+          # Gunakan cp -rf untuk menggabungkan folder secara aman tanpa error 'Directory not empty'
+          echo "Menyalin seluruh file hasil ekstrak ke repositori..."
+          cp -rf temp_extracted/. .
 
           # Hapus folder sementara dan file zip
           rm -rf temp_extracted
           rm -f *.zip
 
-          echo "Daftar file setelah diekstrak:"
+          echo "Daftar file berhasil diekstrak:"
           ls -la
 
       - name: Simpan dan Push File ke Repositori GitHub
