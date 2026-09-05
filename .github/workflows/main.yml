@@ -23,6 +23,7 @@ jobs:
         uses: actions/checkout@v4
         with:
           fetch-depth: 0
+          token: ${{ secrets.GITHUB_TOKEN }}
 
       # 2. Setup Node.js v20
       - name: Setup Node.js
@@ -30,12 +31,11 @@ jobs:
         with:
           node-version: 20
 
-      # 3. Ekstrak ZIP (menangani file dengan spasi/kurung seperti "tgp-management (1).zip")
+      # 3. Ekstrak ZIP dan siapkan file di root
       - name: Extract ZIP and Prepare Files
         run: |
-          echo "🔍 Memeriksa apakah ada file .zip di repositori..."
+          echo "🔍 Memeriksa file .zip di repositori..."
           
-          # Ekstrak semua file zip yang ada
           shopt -s nullglob
           zip_files=(*.zip)
           if [ ${#zip_files[@]} -gt 0 ]; then
@@ -45,21 +45,17 @@ jobs:
             done
           fi
 
-          # Jika package.json berada di subfolder, pindahkan ke root
+          # Jika package.json ada di subfolder, pindahkan ke root
           if [ ! -f "package.json" ]; then
-            echo "⚠️ package.json belum ada di root. Mencari di dalam subfolder..."
+            echo "⚠️ Mencari package.json di subfolder..."
             PKG_PATH=$(find . -maxdepth 3 -name "package.json" -not -path "*/node_modules/*" -not -path "*/.*/*" | head -n 1)
-            
             if [ -n "$PKG_PATH" ]; then
               PROJECT_DIR=$(dirname "$PKG_PATH")
-              echo "📁 Ditemukan proyek di subfolder: $PROJECT_DIR"
-              if [ "$PROJECT_DIR" != "." ]; then
-                echo "🚀 Memindahkan file proyek dari $PROJECT_DIR ke root..."
-                shopt -s dotglob
-                mv "$PROJECT_DIR"/* .
-                shopt -u dotglob
-                rm -rf "$PROJECT_DIR"
-              fi
+              echo "📁 Ditemukan di: $PROJECT_DIR, memindahkan ke root..."
+              shopt -s dotglob
+              mv "$PROJECT_DIR"/* .
+              shopt -u dotglob
+              rm -rf "$PROJECT_DIR"
             fi
           fi
 
@@ -70,20 +66,32 @@ jobs:
           fi
 
           echo "✅ package.json siap di root repositori!"
-          ls -la package.json
 
-      # 4. Install dependencies
+      # 4. Simpan file yang sudah diekstrak ke halaman GitHub Anda & hapus zip
+      - name: Commit and Push Extracted Files to GitHub
+        run: |
+          rm -f *.zip
+          git config --global user.name "github-actions[bot]"
+          git config --global user.email "github-actions[bot]@users.noreply.github.com"
+          git add -A
+          if ! git diff-index --quiet HEAD; then
+            echo "📝 Mengunggah file hasil ekstrak ke halaman repositori GitHub..."
+            git commit -m "Auto-extract files into repository [skip ci]"
+            git push origin HEAD || echo "Push dilewati."
+          fi
+
+      # 5. Install dependencies
       - name: Install Dependencies
         run: npm install
 
-      # 5. Build aplikasi ke dist/ dengan kredensial Supabase
+      # 6. Build aplikasi ke dist/ dengan menyertakan env Supabase
       - name: Build Application with Supabase
         run: npm run build
         env:
           VITE_SUPABASE_URL: ${{ secrets.VITE_SUPABASE_URL || vars.VITE_SUPABASE_URL }}
           VITE_SUPABASE_ANON_KEY: ${{ secrets.VITE_SUPABASE_ANON_KEY || vars.VITE_SUPABASE_ANON_KEY }}
 
-      # 6. Simpan hasil build ke branch gh-pages (GitHub Pages)
+      # 7. Simpan hasil build ke branch gh-pages (GitHub Pages)
       - name: Deploy to gh-pages branch
         continue-on-error: true
         uses: peaceiris/actions-gh-pages@v4
@@ -92,7 +100,7 @@ jobs:
           publish_dir: ./dist
           force_orphan: true
 
-      # 7. Upload file build sebagai Artifact (dapat didownload langsung di tab Actions)
+      # 8. Upload file build sebagai Artifact (dapat didownload di tab Actions)
       - name: Upload Build Artifact
         uses: actions/upload-artifact@v4
         with:
