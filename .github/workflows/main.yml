@@ -28,7 +28,7 @@ jobs:
         with:
           node-version: 20
 
-      # 3. Setup Java 21 untuk kompilasi Android APK (Capacitor Android membutuhkan Java 21)
+      # 3. Setup Java 21 untuk kompilasi Android APK
       - name: Setup Java JDK
         uses: actions/setup-java@v4
         with:
@@ -60,10 +60,29 @@ jobs:
           npx cap add android || echo "Android folder already exists"
           npx cap sync android
           
+          echo "🔧 Memperbaiki konflik duplicate class kotlin-stdlib pada Gradle..."
+          cat << 'EOF' >> android/build.gradle
+
+allprojects {
+    configurations.all {
+        exclude group: 'org.jetbrains.kotlin', module: 'kotlin-stdlib-jdk7'
+        exclude group: 'org.jetbrains.kotlin', module: 'kotlin-stdlib-jdk8'
+    }
+}
+EOF
+
+          cat << 'EOF' >> android/app/build.gradle
+
+configurations.all {
+    exclude group: 'org.jetbrains.kotlin', module: 'kotlin-stdlib-jdk7'
+    exclude group: 'org.jetbrains.kotlin', module: 'kotlin-stdlib-jdk8'
+}
+EOF
+
           echo "🔨 Mengompilasi file .apk dengan Gradle..."
           cd android
           chmod +x gradlew
-          ./gradlew assembleDebug
+          ./gradlew assembleDebug --no-daemon
           
           # Pindahkan dan simpan file APK dengan nama yang rapi
           cd ..
