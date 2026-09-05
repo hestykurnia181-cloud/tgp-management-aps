@@ -28,12 +28,12 @@ jobs:
         with:
           node-version: 20
 
-      # 3. Setup Java 17 untuk kompilasi Android APK
+      # 3. Setup Java 21 untuk kompilasi Android APK (Capacitor Android membutuhkan Java 21)
       - name: Setup Java JDK
         uses: actions/setup-java@v4
         with:
           distribution: 'temurin'
-          java-version: '17'
+          java-version: '21'
 
       # 4. Setup Android SDK
       - name: Setup Android SDK
