@@ -1,0 +1,6 @@
+{
+  "name": "TGP Management",
+  "description": "Multi-business management platform with strict role authorization, atomic inventory transfers, separated ledgers, and isolated business modules.",
+  "requestFramePermissions": [],
+  "majorCapabilities": ["MAJOR_CAPABILITY_SERVER_SIDE_GEMINI_API"]
+}
