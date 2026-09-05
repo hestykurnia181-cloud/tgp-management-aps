@@ -1,4 +1,4 @@
-name: Unzip, Commit & Deploy TGP Management App
+name: Build and Deploy TGP Management
 
 on:
   push:
@@ -13,81 +13,88 @@ permissions:
   id-token: write
 
 jobs:
-  unzip-and-deploy:
-    name: Unzip, Commit Files & Deploy
+  build-and-deploy:
+    name: Extract, Build & Deploy
     runs-on: ubuntu-latest
 
     steps:
+      # 1. Checkout repository
       - name: Checkout Repository
         uses: actions/checkout@v4
         with:
           fetch-depth: 0
-          token: ${{ secrets.GITHUB_TOKEN }}
 
-      # 1. Ekstrak ZIP langsung dan COMMIT hasilnya ke dalam repositori GitHub Anda
-      - name: Extract ZIP and Commit to Repo
-        run: |
-          if compgen -G "*.zip" > /dev/null; then
-            echo "Ditemukan file zip. Memulai proses ekstraksi..."
-            mkdir -p temp_extracted
-            for z in *.zip; do
-              echo "📦 Mengekstrak: $z..."
-              unzip -o "$z" -d temp_extracted/
-            done
-
-            # Deteksi jika isi zip berada di dalam subfolder tunggal
-            SUBDIRS=(temp_extracted/*)
-            if [ ${#SUBDIRS[@]} -eq 1 ] && [ -d "${SUBDIRS[0]}" ] && [ ! -f "temp_extracted/package.json" ]; then
-              echo "Mendeteksi folder induk di dalam ZIP, memindahkan ke root repositori..."
-              shopt -s dotglob
-              mv "${SUBDIRS[0]}"/* .
-              shopt -u dotglob
-            else
-              shopt -s dotglob
-              mv temp_extracted/* .
-              shopt -u dotglob
-            fi
-            rm -rf temp_extracted *.zip
-
-            # Simpan dan push seluruh file hasil unzip ke GitHub
-            git config --global user.name "github-actions[bot]"
-            git config --global user.email "github-actions[bot]@users.noreply.github.com"
-            git add .
-            if ! git diff-index --quiet HEAD; then
-              echo "✅ Mengunggah file hasil unzip ke GitHub repository..."
-              git commit -m "Auto-extract application files into repository [skip ci]"
-              git push origin HEAD
-            else
-              echo "File sudah up-to-date."
-            fi
-          else
-            echo "ℹ️ Tidak ada file zip baru, menggunakan file repositori yang ada."
-          fi
-
-      - name: Setup Node.js Environment
+      # 2. Setup Node.js v20
+      - name: Setup Node.js
         uses: actions/setup-node@v4
         with:
           node-version: 20
 
-      # 2. Install dependencies
+      # 3. Ekstrak ZIP (menangani file dengan spasi/kurung seperti "tgp-management (1).zip")
+      - name: Extract ZIP and Prepare Files
+        run: |
+          echo "🔍 Memeriksa apakah ada file .zip di repositori..."
+          
+          # Ekstrak semua file zip yang ada
+          shopt -s nullglob
+          zip_files=(*.zip)
+          if [ ${#zip_files[@]} -gt 0 ]; then
+            for z in "${zip_files[@]}"; do
+              echo "📦 Mengekstrak: $z..."
+              unzip -q -o "$z" -d .
+            done
+          fi
+
+          # Jika package.json berada di subfolder, pindahkan ke root
+          if [ ! -f "package.json" ]; then
+            echo "⚠️ package.json belum ada di root. Mencari di dalam subfolder..."
+            PKG_PATH=$(find . -maxdepth 3 -name "package.json" -not -path "*/node_modules/*" -not -path "*/.*/*" | head -n 1)
+            
+            if [ -n "$PKG_PATH" ]; then
+              PROJECT_DIR=$(dirname "$PKG_PATH")
+              echo "📁 Ditemukan proyek di subfolder: $PROJECT_DIR"
+              if [ "$PROJECT_DIR" != "." ]; then
+                echo "🚀 Memindahkan file proyek dari $PROJECT_DIR ke root..."
+                shopt -s dotglob
+                mv "$PROJECT_DIR"/* .
+                shopt -u dotglob
+                rm -rf "$PROJECT_DIR"
+              fi
+            fi
+          fi
+
+          if [ ! -f "package.json" ]; then
+            echo "❌ File package.json tidak ditemukan!"
+            ls -la
+            exit 1
+          fi
+
+          echo "✅ package.json siap di root repositori!"
+          ls -la package.json
+
+      # 4. Install dependencies
       - name: Install Dependencies
         run: npm install
 
-      # 3. Kompilasi aplikasi (build)
-      - name: Build Application
+      # 5. Build aplikasi ke dist/ dengan kredensial Supabase
+      - name: Build Application with Supabase
         run: npm run build
+        env:
+          VITE_SUPABASE_URL: ${{ secrets.VITE_SUPABASE_URL || vars.VITE_SUPABASE_URL }}
+          VITE_SUPABASE_ANON_KEY: ${{ secrets.VITE_SUPABASE_ANON_KEY || vars.VITE_SUPABASE_ANON_KEY }}
 
-      # 4. Deploy otomatis ke branch gh-pages
+      # 6. Simpan hasil build ke branch gh-pages (GitHub Pages)
       - name: Deploy to gh-pages branch
+        continue-on-error: true
         uses: peaceiris/actions-gh-pages@v4
         with:
           github_token: ${{ secrets.GITHUB_TOKEN }}
           publish_dir: ./dist
           force_orphan: true
 
-      # 5. Buat downloadable artifact di tab Actions
+      # 7. Upload file build sebagai Artifact (dapat didownload langsung di tab Actions)
       - name: Upload Build Artifact
         uses: actions/upload-artifact@v4
         with:
-          name: tgp-management-production-build
+          name: tgp-management-app-dist
           path: dist/
