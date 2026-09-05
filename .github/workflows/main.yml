@@ -1,4 +1,4 @@
-name: Build and Deploy TGP Management
+name: Build Android APK & Web App
 
 on:
   push:
@@ -13,8 +13,8 @@ permissions:
   id-token: write
 
 jobs:
-  build-and-deploy:
-    name: Build & Deploy Application
+  build-apk-and-web:
+    name: Build Android APK (.apk) & Web
     runs-on: ubuntu-latest
 
     steps:
@@ -22,34 +22,68 @@ jobs:
       - name: Checkout Repository
         uses: actions/checkout@v4
 
-      # 2. Setup environment Node.js v20
+      # 2. Setup Node.js v20
       - name: Setup Node.js
         uses: actions/setup-node@v4
         with:
           node-version: 20
 
-      # 3. Install seluruh paket dependencies
-      - name: Install Dependencies
-        run: npm install
+      # 3. Setup Java 17 untuk kompilasi Android APK
+      - name: Setup Java JDK
+        uses: actions/setup-java@v4
+        with:
+          distribution: 'temurin'
+          java-version: '17'
 
-      # 4. Kompilasi aplikasi (Build ke folder dist/)
-      - name: Build Application with Supabase
+      # 4. Setup Android SDK
+      - name: Setup Android SDK
+        uses: android-actions/setup-android@v3
+
+      # 5. Install dependensi Node.js & Capacitor untuk Android
+      - name: Install Dependencies & Capacitor
+        run: |
+          npm install
+          npm install --save-dev @capacitor/core @capacitor/cli @capacitor/android
+
+      # 6. Build aplikasi web ke folder dist/ dengan kredensial Supabase
+      - name: Build Web Application
         run: npm run build
         env:
           VITE_SUPABASE_URL: ${{ secrets.VITE_SUPABASE_URL || vars.VITE_SUPABASE_URL }}
           VITE_SUPABASE_ANON_KEY: ${{ secrets.VITE_SUPABASE_ANON_KEY || vars.VITE_SUPABASE_ANON_KEY }}
 
-      # 5. Publikasikan aplikasi otomatis ke GitHub Pages
-      - name: Deploy to GitHub Pages
+      # 7. Inisialisasi proyek Android Capacitor & Build APK
+      - name: Build Android APK
+        run: |
+          echo "📱 Menginisialisasi proyek Android..."
+          npx cap init "TGP Management" "com.tgp.management" --web-dir dist
+          npx cap add android || echo "Android folder already exists"
+          npx cap sync android
+          
+          echo "🔨 Mengompilasi file .apk dengan Gradle..."
+          cd android
+          chmod +x gradlew
+          ./gradlew assembleDebug
+          
+          # Pindahkan dan simpan file APK dengan nama yang rapi
+          cd ..
+          mkdir -p apk_output
+          cp android/app/build/outputs/apk/debug/app-debug.apk apk_output/TGP-Management.apk
+          echo "✅ Berhasil membuat file APK!"
+          ls -lh apk_output/
+
+      # 8. Upload File APK Android (.apk) ke tab Artifacts
+      - name: Upload Android APK
+        uses: actions/upload-artifact@v4
+        with:
+          name: TGP-Management-APK
+          path: apk_output/TGP-Management.apk
+
+      # 9. Publikasikan versi Web ke GitHub Pages
+      - name: Deploy Web to GitHub Pages
+        continue-on-error: true
         uses: peaceiris/actions-gh-pages@v4
         with:
           github_token: ${{ secrets.GITHUB_TOKEN }}
           publish_dir: ./dist
           force_orphan: true
-
-      # 6. Upload file bundle siap pakai ke tab Actions (dapat didownload)
-      - name: Upload Build Artifact
-        uses: actions/upload-artifact@v4
-        with:
-          name: tgp-management-production-build
-          path: dist/
