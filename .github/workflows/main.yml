@@ -14,13 +14,15 @@ permissions:
 
 jobs:
   build-and-deploy:
-    name: Install, Build & Deploy
+    name: Locate, Build & Deploy
     runs-on: ubuntu-latest
 
     steps:
       # 1. Ambil source code dari repositori
       - name: Checkout Repository
         uses: actions/checkout@v4
+        with:
+          fetch-depth: 0
 
       # 2. Setup runtime Node.js v20
       - name: Setup Node.js
@@ -28,18 +30,57 @@ jobs:
         with:
           node-version: 20
 
-      # 3. Install seluruh dependencies (npm install tanpa lockfile restriction)
+      # 3. Cari otomatis posisi package.json (jika ada di subfolder atau zip) dan pindahkan ke root
+      - name: Locate and Prepare Project Files
+        run: |
+          echo "🔍 Memeriksa struktur file repositori..."
+          
+          if [ ! -f "package.json" ]; then
+            echo "⚠️ package.json belum ada di root. Mencari di subfolder..."
+            
+            PKG_PATH=$(find . -maxdepth 3 -name "package.json" -not -path "*/node_modules/*" -not -path "*/.*/*" | head -n 1)
+            
+            # Jika belum ketemu, cek apakah masih ada file .zip
+            if [ -z "$PKG_PATH" ] && compgen -G "*.zip" > /dev/null; then
+              echo "📦 Mengekstrak file zip..."
+              for z in *.zip; do
+                unzip -o "$z" -d .
+              done
+              PKG_PATH=$(find . -maxdepth 3 -name "package.json" -not -path "*/node_modules/*" -not -path "*/.*/*" | head -n 1)
+            fi
+
+            if [ -n "$PKG_PATH" ]; then
+              PROJECT_DIR=$(dirname "$PKG_PATH")
+              echo "📁 Ditemukan package.json di: $PROJECT_DIR"
+              if [ "$PROJECT_DIR" != "." ]; then
+                echo "🚀 Memindahkan file proyek dari $PROJECT_DIR ke root..."
+                shopt -s dotglob
+                mv "$PROJECT_DIR"/* .
+                shopt -u dotglob
+                rm -rf "$PROJECT_DIR"
+              fi
+            else
+              echo "❌ ERROR: File package.json tidak ditemukan!"
+              ls -la
+              exit 1
+            fi
+          fi
+
+          echo "✅ package.json siap di root!"
+          ls -la package.json
+
+      # 4. Install dependencies
       - name: Install Dependencies
         run: npm install
 
-      # 4. Build aplikasi ke folder dist/ dengan kredensial Supabase
+      # 5. Build aplikasi ke dist/ dengan kredensial Supabase
       - name: Build Application with Supabase
         run: npm run build
         env:
           VITE_SUPABASE_URL: ${{ secrets.VITE_SUPABASE_URL || vars.VITE_SUPABASE_URL }}
           VITE_SUPABASE_ANON_KEY: ${{ secrets.VITE_SUPABASE_ANON_KEY || vars.VITE_SUPABASE_ANON_KEY }}
 
-      # 5. Publikasikan aplikasi ke GitHub Pages (branch gh-pages)
+      # 6. Deploy otomatis hasil build ke GitHub Pages
       - name: Deploy to GitHub Pages
         uses: peaceiris/actions-gh-pages@v4
         with:
@@ -47,7 +88,7 @@ jobs:
           publish_dir: ./dist
           force_orphan: true
 
-      # 6. Simpan hasil build di tab Actions (Downloadable Artifact)
+      # 7. Upload file build sebagai Artifact (dapat diunduh langsung di tab Actions)
       - name: Upload Build Artifact
         uses: actions/upload-artifact@v4
         with:
