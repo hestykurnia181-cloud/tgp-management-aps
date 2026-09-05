@@ -1,0 +1,60 @@
+name: Unzip and Setup TGP Management App
+
+on:
+  workflow_dispatch:
+    inputs:
+      zip_filename:
+        description: 'Nama atau path file ZIP aplikasi (contoh: project.zip)'
+        required: true
+        default: 'project.zip'
+      target_directory:
+        description: 'Direktori tujuan ekstraksi'
+        required: false
+        default: '.'
+  push:
+    branches: [ main, master ]
+  pull_request:
+    branches: [ main, master ]
+
+jobs:
+  extract-and-build:
+    name: Unzip and Build Project
+    runs-on: ubuntu-latest
+
+    steps:
+      - name: Checkout Repository
+        uses: actions/checkout@v4
+
+      # Mengekstrak file ZIP aplikasi ke direktori target
+      - name: Extract ZIP File
+        run: |
+          ZIP_FILE="${{ github.event.inputs.zip_filename || 'project.zip' }}"
+          TARGET_DIR="${{ github.event.inputs.target_directory || '.' }}"
+          
+          if [ -f "$ZIP_FILE" ]; then
+            echo "📦 Mengekstrak $ZIP_FILE ke $TARGET_DIR..."
+            mkdir -p "$TARGET_DIR"
+            unzip -o "$ZIP_FILE" -d "$TARGET_DIR"
+            echo "✅ Ekstraksi selesai."
+          else
+            echo "ℹ️ File $ZIP_FILE tidak ditemukan di root, melanjutkan dengan file proyek yang ada."
+          fi
+
+      # Setup runtime Node.js
+      - name: Setup Node.js
+        uses: actions/setup-node@v4
+        with:
+          node-version: 20
+          cache: 'npm'
+
+      # Instalasi dependensi
+      - name: Install Dependencies
+        run: npm ci || npm install
+
+      # Validasi TypeScript dan Lint
+      - name: Run Lint
+        run: npm run lint
+
+      # Kompilasi Production Build
+      - name: Build Application
+        run: npm run build
