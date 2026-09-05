@@ -4,9 +4,9 @@ on:
   workflow_dispatch:
     inputs:
       zip_filename:
-        description: 'Nama atau path file ZIP aplikasi (contoh: project.zip)'
-        required: true
-        default: 'project.zip'
+        description: 'Nama file ZIP (opsional, kosongkan jika ingin deteksi otomatis)'
+        required: false
+        default: ''
       target_directory:
         description: 'Direktori tujuan ekstraksi'
         required: false
@@ -25,36 +25,36 @@ jobs:
       - name: Checkout Repository
         uses: actions/checkout@v4
 
-      # Mengekstrak file ZIP aplikasi ke direktori target
-      - name: Extract ZIP File
-        run: |
-          ZIP_FILE="${{ github.event.inputs.zip_filename || 'project.zip' }}"
-          TARGET_DIR="${{ github.event.inputs.target_directory || '.' }}"
-          
-          if [ -f "$ZIP_FILE" ]; then
-            echo "📦 Mengekstrak $ZIP_FILE ke $TARGET_DIR..."
-            mkdir -p "$TARGET_DIR"
-            unzip -o "$ZIP_FILE" -d "$TARGET_DIR"
-            echo "✅ Ekstraksi selesai."
-          else
-            echo "ℹ️ File $ZIP_FILE tidak ditemukan di root, melanjutkan dengan file proyek yang ada."
-          fi
-
-      # Setup runtime Node.js
-      - name: Setup Node.js
+      - name: Setup Node.js Environment
         uses: actions/setup-node@v4
         with:
           node-version: 20
-          cache: 'npm'
 
-      # Instalasi dependensi
+      # Ekstrak file zip jika tersedia di repositori
+      - name: Extract ZIP File
+        run: |
+          TARGET_DIR="${{ github.event.inputs.target_directory || '.' }}"
+          mkdir -p "$TARGET_DIR"
+
+          SPECIFIED_ZIP="${{ github.event.inputs.zip_filename }}"
+
+          if [ -n "$SPECIFIED_ZIP" ] && [ -f "$SPECIFIED_ZIP" ]; then
+            echo "📦 Mengekstrak file spesifik: $SPECIFIED_ZIP..."
+            unzip -o "$SPECIFIED_ZIP" -d "$TARGET_DIR"
+          elif compgen -G "*.zip" > /dev/null; then
+            for z in *.zip; do
+              echo "📦 Mengekstrak file zip ditemukan: $z..."
+              unzip -o "$z" -d "$TARGET_DIR"
+            done
+          else
+            echo "ℹ️ Tidak ada file zip yang perlu diekstrak. Menggunakan struktur file repositori langsung."
+          fi
+
       - name: Install Dependencies
-        run: npm ci || npm install
+        run: npm install
 
-      # Validasi TypeScript dan Lint
-      - name: Run Lint
+      - name: Type Check and Lint
         run: npm run lint
 
-      # Kompilasi Production Build
       - name: Build Application
         run: npm run build
