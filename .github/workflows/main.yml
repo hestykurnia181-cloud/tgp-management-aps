@@ -1,69 +1,55 @@
-name: Ekstrak File ZIP Proyek
+name: Build and Deploy TGP Management
 
 on:
   push:
+    branches: [ main, master ]
+  pull_request:
     branches: [ main, master ]
   workflow_dispatch:
 
 permissions:
   contents: write
+  pages: write
+  id-token: write
 
 jobs:
-  extract-and-commit:
-    name: Ekstrak ZIP ke Repositori
+  build-and-deploy:
+    name: Build & Deploy Application
     runs-on: ubuntu-latest
 
     steps:
-      - name: Checkout Repositori
+      # 1. Ambil source code dari repositori
+      - name: Checkout Repository
         uses: actions/checkout@v4
+
+      # 2. Setup environment Node.js v20
+      - name: Setup Node.js
+        uses: actions/setup-node@v4
         with:
-          token: ${{ secrets.GITHUB_TOKEN }}
-          persist-credentials: true
+          node-version: 20
 
-      - name: Ekstrak File ZIP
-        run: |
-          echo "Memulai proses ekstraksi file zip..."
-          
-          shopt -s nullglob
-          zips=(*.zip)
-          
-          if [ ${#zips[@]} -eq 0 ]; then
-            echo "Tidak ditemukan file .zip di repositori. Mungkin sudah terekstrak."
-            ls -la
-            exit 0
-          fi
+      # 3. Install seluruh paket dependencies
+      - name: Install Dependencies
+        run: npm install
 
-          mkdir -p temp_extracted
-          for zip_file in "${zips[@]}"; do
-            echo "📦 Mengekstrak file: $zip_file"
-            unzip -o "$zip_file" -d temp_extracted/
-          done
+      # 4. Kompilasi aplikasi (Build ke folder dist/)
+      - name: Build Application with Supabase
+        run: npm run build
+        env:
+          VITE_SUPABASE_URL: ${{ secrets.VITE_SUPABASE_URL || vars.VITE_SUPABASE_URL }}
+          VITE_SUPABASE_ANON_KEY: ${{ secrets.VITE_SUPABASE_ANON_KEY || vars.VITE_SUPABASE_ANON_KEY }}
 
-          # Amankan folder .github agar workflow yang berjalan tidak tertimpa
-          rm -rf temp_extracted/.github
+      # 5. Publikasikan aplikasi otomatis ke GitHub Pages
+      - name: Deploy to GitHub Pages
+        uses: peaceiris/actions-gh-pages@v4
+        with:
+          github_token: ${{ secrets.GITHUB_TOKEN }}
+          publish_dir: ./dist
+          force_orphan: true
 
-          # Gunakan cp -rf untuk menggabungkan folder secara aman tanpa error 'Directory not empty'
-          echo "Menyalin seluruh file hasil ekstrak ke repositori..."
-          cp -rf temp_extracted/. .
-
-          # Hapus folder sementara dan file zip
-          rm -rf temp_extracted
-          rm -f *.zip
-
-          echo "Daftar file berhasil diekstrak:"
-          ls -la
-
-      - name: Simpan dan Push File ke Repositori GitHub
-        run: |
-          git config --global user.name "github-actions[bot]"
-          git config --global user.email "github-actions[bot]@users.noreply.github.com"
-          
-          git add -A
-          
-          if git diff --staged --quiet; then
-            echo "Tidak ada perubahan file baru."
-          else
-            git commit -m "Ekstrak file source code dari ZIP"
-            git push origin HEAD
-            echo "✅ Selesai! Seluruh file berhasil diekstrak dan masuk ke repositori."
-          fi
+      # 6. Upload file bundle siap pakai ke tab Actions (dapat didownload)
+      - name: Upload Build Artifact
+        uses: actions/upload-artifact@v4
+        with:
+          name: tgp-management-production-build
+          path: dist/
